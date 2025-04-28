@@ -52,7 +52,7 @@ impl backend::Interface for Shm {
     }
 
     fn unlink(&self, id: &str) -> crate::Result<()> {
-        Self::with_path(id, |path| shm_unlink(path))
+        Self::with_path(id, shm_unlink)
     }
 }
 
