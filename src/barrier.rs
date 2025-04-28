@@ -1,5 +1,4 @@
 use core::mem::MaybeUninit;
-use std::ffi::CString;
 
 use bon::bon;
 
@@ -15,7 +14,7 @@ unsafe impl Send for Barrier {}
 impl Barrier {
     #[builder]
     pub fn new(
-        name: CString,
+        name: String,
         #[builder(default)] create: bool,
         thread_count: u32,
     ) -> crate::Result<Self> {

@@ -5,7 +5,6 @@ pub use mmap::Mmap;
 pub use shm::Shm;
 
 use core::ffi;
-use core::ffi::CStr;
 use core::num::NonZeroUsize;
 use core::ptr;
 use core::ptr::NonNull;
@@ -30,7 +29,7 @@ pub enum Backend {
 }
 
 impl Backend {
-    pub fn open(&self, id: &CStr, size: NonZeroUsize) -> crate::Result<File> {
+    pub fn open(&self, id: &str, size: NonZeroUsize) -> crate::Result<File> {
         self.as_backend().open(id, size)
     }
 
@@ -39,7 +38,7 @@ impl Backend {
         self.as_backend().name()
     }
 
-    pub fn unlink(&self, id: &CStr) -> crate::Result<()> {
+    pub fn unlink(&self, id: &str) -> crate::Result<()> {
         self.as_backend().unlink(id)
     }
 
@@ -62,9 +61,9 @@ impl Default for Backend {
 pub(crate) trait Interface: Send + Sync {
     fn name(&self) -> &'static str;
 
-    fn open(&self, id: &CStr, size: NonZeroUsize) -> crate::Result<File>;
+    fn open(&self, id: &str, size: NonZeroUsize) -> crate::Result<File>;
 
-    fn unlink(&self, id: &CStr) -> crate::Result<()>;
+    fn unlink(&self, id: &str) -> crate::Result<()>;
 }
 
 pub struct File {

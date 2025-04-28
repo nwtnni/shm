@@ -1,7 +1,6 @@
 use core::num::NonZeroUsize;
 use core::ptr::NonNull;
 use std::ffi;
-use std::ffi::CString;
 
 use bon::bon;
 
@@ -11,7 +10,7 @@ use crate::Populate;
 use crate::backend::Interface as _;
 
 pub struct Raw {
-    pub(crate) name: CString,
+    pub(crate) name: String,
     pub(crate) size: NonZeroUsize,
     pub(crate) address: NonNull<Page>,
 }
@@ -20,7 +19,7 @@ pub struct Raw {
 impl Raw {
     #[builder]
     pub fn new(
-        name: CString,
+        name: String,
         size: usize,
         #[builder(default)] create: bool,
         numa: Option<Numa>,
@@ -30,7 +29,7 @@ impl Raw {
 
         if create {
             match backend.unlink(&name) {
-                Ok(()) => log::info!("Unlinked stale shm object: {}", name.to_string_lossy()),
+                Ok(()) => log::info!("Unlinked stale shm object: {}", name),
                 Err(error) if error.is_not_found() => (),
                 Err(error) => return Err(error),
             }

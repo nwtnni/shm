@@ -2,7 +2,6 @@ use core::marker::PhantomData;
 use core::mem;
 use core::num::NonZeroUsize;
 use core::ptr::NonNull;
-use std::ffi::CString;
 
 pub mod backend;
 mod barrier;
@@ -53,7 +52,7 @@ impl<T> Shm<T> {
     #[builder]
     pub fn new(
         numa: Option<Numa>,
-        name: CString,
+        name: String,
         #[builder(default)] create: bool,
         populate: Option<Populate>,
     ) -> crate::Result<Self> {

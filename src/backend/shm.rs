@@ -16,30 +16,26 @@ impl backend::Interface for Shm {
         "shm"
     }
 
-    fn open(&self, id: &CStr, size: NonZeroUsize) -> crate::Result<backend::File> {
-        assert!(
-            id.to_bytes()[0] == b'/',
-            "Shared memory id {:?} should start with /",
-            id.to_string_lossy(),
-        );
-
+    fn open(&self, id: &str, size: NonZeroUsize) -> crate::Result<backend::File> {
         let size = size.get().next_multiple_of(Page::SIZE);
 
-        let (create, fd) = match unsafe {
-            crate::try_libc!(libc::shm_open(
-                id.as_ptr(),
-                libc::O_CREAT | libc::O_EXCL | libc::O_RDWR,
-                0o666,
-            ))
-        } {
-            Err(error) if error.is_already_exists() => unsafe {
-                let fd = crate::try_libc!(libc::shm_open(id.as_ptr(), libc::O_RDWR, 0o666))
-                    .map(|fd| OwnedFd::from_raw_fd(fd))?;
-                (false, fd)
-            },
-            Err(error) => return Err(error),
-            Ok(fd) => (true, unsafe { OwnedFd::from_raw_fd(fd) }),
-        };
+        let (create, fd) = Self::with_path(id, |path| {
+            match unsafe {
+                crate::try_libc!(libc::shm_open(
+                    path.as_ptr(),
+                    libc::O_CREAT | libc::O_EXCL | libc::O_RDWR,
+                    0o666,
+                ))
+            } {
+                Err(error) if error.is_already_exists() => unsafe {
+                    let fd = crate::try_libc!(libc::shm_open(path.as_ptr(), libc::O_RDWR, 0o666))
+                        .map(|fd| OwnedFd::from_raw_fd(fd))?;
+                    Ok((false, fd))
+                },
+                Err(error) => Err(error),
+                Ok(fd) => Ok((true, unsafe { OwnedFd::from_raw_fd(fd) })),
+            }
+        })?;
 
         if create {
             unsafe {
@@ -55,14 +51,30 @@ impl backend::Interface for Shm {
             .build())
     }
 
-    fn unlink(&self, id: &CStr) -> crate::Result<()> {
-        shm_unlink(id)
+    fn unlink(&self, id: &str) -> crate::Result<()> {
+        Self::with_path(id, |path| shm_unlink(path))
     }
 }
 
 impl From<Shm> for backend::Backend {
     fn from(shm: Shm) -> Self {
         backend::Backend::Shm(shm)
+    }
+}
+
+impl Shm {
+    pub const MAX_LEN: usize = 62;
+
+    fn with_path<T, F: FnOnce(&CStr) -> crate::Result<T>>(id: &str, apply: F) -> crate::Result<T> {
+        if id.len() > Self::MAX_LEN {
+            return Err(crate::Error::ShmName);
+        }
+
+        let mut path = [0u8; Self::MAX_LEN + 1];
+        path[0] = b'/';
+        path[1..][..id.len()].copy_from_slice(id.as_bytes());
+        let path = CStr::from_bytes_until_nul(&path).unwrap();
+        apply(path)
     }
 }
 
