@@ -9,7 +9,6 @@ use core::ffi::CStr;
 use core::num::NonZeroUsize;
 use core::ptr;
 use core::ptr::NonNull;
-use std::io;
 use std::os::fd::AsRawFd;
 use std::os::fd::OwnedFd;
 use std::os::unix::prelude::RawFd;
@@ -17,9 +16,11 @@ use std::os::unix::prelude::RawFd;
 use crate::Numa;
 use crate::Page;
 use crate::Populate;
+use crate::try_libc;
 
+/// Shared memory backend.
 // Note: we use an enum here to avoid dynamic allocation
-// of a `Box<dyn Backend>` trait object. This is fine
+// of a `Box<dyn backend::Interface>` trait object. This is fine
 // because the set of backends should not be extensible
 // by downstream consumers.
 #[derive(Debug)]
@@ -33,6 +34,7 @@ impl Backend {
         self.as_backend().open(id, size)
     }
 
+    /// Human-readable name of backend, for debugging purposes.
     pub fn name(&self) -> &str {
         self.as_backend().name()
     }
@@ -57,7 +59,7 @@ impl Default for Backend {
 
 // This trait is an implementation detail for requiring
 // our backend implementations to expose the same interface.
-pub(super) trait Interface: Send + Sync {
+pub(crate) trait Interface: Send + Sync {
     fn name(&self) -> &'static str;
 
     fn open(&self, id: &CStr, size: NonZeroUsize) -> crate::Result<File>;
@@ -112,8 +114,8 @@ impl File {
         numa: Option<Numa>,
         populate: Option<Populate>,
     ) -> crate::Result<NonNull<Page>> {
-        let actual = match unsafe {
-            libc::mmap64(
+        let actual = unsafe {
+            try_libc!(libc::mmap64(
                 address
                     .map(NonNull::as_ptr)
                     .unwrap_or_else(ptr::null_mut)
@@ -129,14 +131,11 @@ impl File {
                     },
                 self.as_raw_fd(),
                 self.offset,
-            )
-        } {
-            libc::MAP_FAILED => Err(crate::Error::Libc {
-                name: "mmap64",
-                source: io::Error::last_os_error(),
-            }),
-            actual => Ok(NonNull::new(actual).unwrap().cast::<Page>()),
-        }?;
+            ))
+        }
+        .map(NonNull::new)
+        .map(Option::unwrap)
+        .map(|address| address.cast::<Page>())?;
 
         if let Some(expected) = address {
             assert_eq!(expected, actual);
@@ -154,8 +153,11 @@ impl File {
     }
 }
 
+// SAFETY: `mbind` will not dereference invalid address.
 #[expect(clippy::not_unsafe_ptr_arg_deref)]
-pub fn mbind(numa: Numa, address: *mut ffi::c_void, size: usize) -> crate::Result<()> {
+fn mbind(numa: Numa, address: *mut ffi::c_void, size: usize) -> crate::Result<()> {
+    // Call syscall to avoid external C dependency on `libnuma`.
+    //
     // https://github.com/numactl/numactl/blob/6c14bd59d438ebb5ef828e393e8563ba18f59cb2/syscall.c#L230-L235
     unsafe fn mbind_syscall(
         address: *mut ffi::c_void,
@@ -180,7 +182,7 @@ pub fn mbind(numa: Numa, address: *mut ffi::c_void, size: usize) -> crate::Resul
     };
 
     unsafe {
-        crate::try_libc!(mbind_syscall(
+        try_libc!(mbind_syscall(
             address,
             size as u64,
             libc::MPOL_F_STATIC_NODES | policy,
@@ -196,8 +198,9 @@ pub fn mbind(numa: Numa, address: *mut ffi::c_void, size: usize) -> crate::Resul
     Ok(())
 }
 
+// SAFETY: `libc::madvise` will not dereference invalid address.
 #[expect(clippy::not_unsafe_ptr_arg_deref)]
-pub fn madvise(address: *mut ffi::c_void, size: usize) -> crate::Result<()> {
-    unsafe { crate::try_libc!(libc::madvise(address, size, libc::MADV_POPULATE_WRITE)) }?;
+fn madvise(address: *mut ffi::c_void, size: usize) -> crate::Result<()> {
+    unsafe { try_libc!(libc::madvise(address, size, libc::MADV_POPULATE_WRITE)) }?;
     Ok(())
 }

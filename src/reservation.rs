@@ -4,6 +4,7 @@ use core::ptr;
 use core::ptr::NonNull;
 
 use crate::Page;
+use crate::try_libc;
 
 pub struct Reservation<const SIZE: usize> {
     address: NonNull<Page>,
@@ -29,22 +30,19 @@ impl<const SIZE: usize> Reservation<SIZE> {
     }
 
     fn mmap(size: NonZeroUsize) -> crate::Result<NonNull<Page>> {
-        match unsafe {
-            libc::mmap64(
+        unsafe {
+            try_libc!(libc::mmap64(
                 ptr::null_mut(),
                 size.get(),
                 libc::PROT_NONE,
                 libc::MAP_ANONYMOUS | libc::MAP_PRIVATE,
                 -1,
                 0,
-            )
-        } {
-            libc::MAP_FAILED => Err(crate::Error::Libc {
-                name: "mmap64",
-                source: std::io::Error::last_os_error(),
-            }),
-            actual => Ok(NonNull::new(actual).unwrap().cast::<Page>()),
+            ))
         }
+        .map(NonNull::new)
+        .map(Option::unwrap)
+        .map(|address| address.cast::<Page>())
     }
 
     pub fn unmap(&self) -> crate::Result<()> {

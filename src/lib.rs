@@ -89,6 +89,17 @@ impl<T> Shm<T> {
 }
 
 macro_rules! try_libc {
+    // mmap64 returns a pointer instead of a status code
+    (libc::mmap64( $($arg:expr),* $(,)? )) => {
+        match libc::mmap64 ( $($arg),* ) {
+            libc::MAP_FAILED => Err(crate::Error::Libc {
+                name: "mmap64",
+                source: ::std::io::Error::last_os_error()
+            }),
+            value => Ok(value),
+        }
+    };
+
     (libc:: $function:ident ( $($arg:expr),* $(,)? )) => {
         {
             use libc::$function;
