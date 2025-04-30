@@ -141,7 +141,7 @@ impl File {
         }
 
         if let Some(numa) = numa {
-            mbind(numa, actual.as_ptr().cast(), self.size.get())?;
+            numa.mbind(actual.as_ptr().cast(), self.size.get())?;
         }
 
         if matches!(populate, Some(Populate::Physical)) {
@@ -150,51 +150,6 @@ impl File {
 
         Ok(actual)
     }
-}
-
-// SAFETY: `mbind` will not dereference invalid address.
-#[expect(clippy::not_unsafe_ptr_arg_deref)]
-fn mbind(numa: Numa, address: *mut ffi::c_void, size: usize) -> crate::Result<()> {
-    // Call syscall to avoid external C dependency on `libnuma`.
-    //
-    // https://github.com/numactl/numactl/blob/6c14bd59d438ebb5ef828e393e8563ba18f59cb2/syscall.c#L230-L235
-    unsafe fn mbind_syscall(
-        address: *mut ffi::c_void,
-        size: libc::c_ulong,
-        mode: libc::c_int,
-        mask: *const libc::c_ulong,
-        maxnode: libc::c_ulong,
-        flags: libc::c_uint,
-    ) -> i64 {
-        unsafe { libc::syscall(libc::SYS_mbind, address, size, mode, mask, maxnode, flags) }
-    }
-
-    let (policy, mask) = match numa {
-        Numa::Bind { node } => (libc::MPOL_BIND, 1u64 << node),
-        Numa::Interleave { nodes } => (
-            libc::MPOL_INTERLEAVE,
-            nodes
-                .into_iter()
-                .map(|node| 1u64 << node)
-                .fold(0, |l, r| l | r),
-        ),
-    };
-
-    unsafe {
-        try_libc!(mbind_syscall(
-            address,
-            size as u64,
-            libc::MPOL_F_STATIC_NODES | policy,
-            &mask,
-            64,
-            // MPOL_MF_STRICT sometimes raises EIO when called concurrently for the same
-            // address range, so disable for now.
-            // https://github.com/torvalds/linux/blob/0c559323bbaabee7346c12e74b497e283aaafef5/include/uapi/linux/mempolicy.h#L48
-            0,
-        ))?;
-    }
-
-    Ok(())
 }
 
 // SAFETY: `libc::madvise` will not dereference invalid address.

@@ -6,12 +6,14 @@ use core::ptr::NonNull;
 pub mod backend;
 mod barrier;
 mod error;
+mod numa;
 mod raw;
 mod reservation;
 
 pub use backend::Backend;
 pub use barrier::Barrier;
 pub use error::Error;
+pub use numa::Numa;
 pub use raw::Raw;
 pub use reservation::Reservation;
 
@@ -24,14 +26,6 @@ pub struct Page([u8; 4096]);
 
 impl Page {
     pub const SIZE: usize = mem::size_of::<Self>();
-}
-
-#[derive(Clone, Debug)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-#[cfg_attr(feature = "serde", serde(tag = "policy", rename_all = "snake_case"))]
-pub enum Numa {
-    Bind { node: usize },
-    Interleave { nodes: Vec<usize> },
 }
 
 #[derive(Copy, Clone, Debug)]
