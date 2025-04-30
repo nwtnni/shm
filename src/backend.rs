@@ -1,5 +1,5 @@
 mod mmap;
-mod shm;
+pub(crate) mod shm;
 
 pub use mmap::Mmap;
 pub use shm::Shm;

@@ -20,7 +20,7 @@ impl backend::Interface for Shm {
         let size = size.get().next_multiple_of(Page::SIZE);
 
         let (create, fd) = Self::with_path(id, |path| {
-            match unsafe {
+            let (create, fd) = match unsafe {
                 crate::try_libc!(libc::shm_open(
                     path.as_ptr(),
                     libc::O_CREAT | libc::O_EXCL | libc::O_RDWR,
@@ -34,14 +34,16 @@ impl backend::Interface for Shm {
                 },
                 Err(error) => Err(error),
                 Ok(fd) => Ok((true, unsafe { OwnedFd::from_raw_fd(fd) })),
-            }
-        })?;
+            }?;
 
-        if create {
-            unsafe {
-                crate::try_libc!(libc::ftruncate64(fd.as_raw_fd(), size as i64))?;
+            if create {
+                unsafe {
+                    crate::try_libc!(libc::ftruncate64(fd.as_raw_fd(), size as i64))?;
+                }
             }
-        }
+
+            Ok((create, fd))
+        })?;
 
         Ok(backend::File::builder()
             .fd(fd)
@@ -62,6 +64,8 @@ impl From<Shm> for backend::Backend {
     }
 }
 
+pub type Path = [u8; Shm::MAX_LEN + 1];
+
 impl Shm {
     pub const MAX_LEN: usize = 62;
 
@@ -73,8 +77,7 @@ impl Shm {
         let mut path = [0u8; Self::MAX_LEN + 1];
         path[0] = b'/';
         path[1..][..id.len()].copy_from_slice(id.as_bytes());
-        let path = CStr::from_bytes_until_nul(&path).unwrap();
-        apply(path)
+        apply(CStr::from_bytes_until_nul(&path).unwrap()).map_err(|error| error.with_path(path))
     }
 }
 
