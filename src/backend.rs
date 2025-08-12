@@ -1,6 +1,10 @@
+#[cfg(feature = "ivshmem")]
+mod ivshmem;
 mod mmap;
 pub(crate) mod shm;
 
+#[cfg(feature = "ivshmem")]
+pub use ivshmem::Ivshmem;
 pub use mmap::Mmap;
 pub use shm::Shm;
 
@@ -26,6 +30,8 @@ use crate::try_libc;
 pub enum Backend {
     Mmap(Mmap),
     Shm(Shm),
+    #[cfg(feature = "ivshmem")]
+    Ivshmem(Ivshmem),
 }
 
 impl Backend {
@@ -46,6 +52,8 @@ impl Backend {
         match self {
             Backend::Mmap(mmap) => mmap,
             Backend::Shm(shm) => shm,
+            #[cfg(feature = "ivshmem")]
+            Backend::Ivshmem(ivshmem) => ivshmem,
         }
     }
 }
