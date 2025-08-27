@@ -95,7 +95,7 @@ mod driver {
     pub(super) struct region_desc {
         pub(super) offset: u64,
         pub(super) length: u64,
-        prog_id: [u8; 12],
+        prog_id: [u8; 28],
     }
 
     #[repr(C)]
@@ -123,8 +123,8 @@ mod driver {
         find.desc.length = size as u64;
 
         assert!(
-            id.len() < 12,
-            "Ivshmem driver only supports IDs up to length 12 (including null byte), got {id:?}"
+            id.len() < 28,
+            "Ivshmem driver only supports IDs up to length 28 (including null byte), got {id:?}"
         );
 
         // Note: `to_bytes` does not include null terminator. We check above
@@ -156,7 +156,7 @@ mod driver {
         let mut free = region_desc {
             offset: offset as u64,
             length: size as u64,
-            prog_id: [0u8; 12],
+            prog_id: [0u8; 28],
         };
 
         free.prog_id[..id.as_bytes().len()].copy_from_slice(id.as_bytes());
